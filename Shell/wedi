@@ -1,0 +1,353 @@
+#!/bin/sh
+
+ 
+#        IOS - Projekt 1
+#          Jan Folenta
+#   xfolen00@stud.fit.vutbr.cz
+
+
+export POSIXLY_CORRECT=yes
+
+
+# Test, ci je dostupna utilita realpath
+TEST_REALPATH=`realpath . > /dev/null 2>&1`
+VYSLEDOK_OPERACIE=$?
+if [ "$VYSLEDOK_OPERACIE" -ne 0 ]; then
+    echo "Chyba: Utilita 'realpath' nie je dostupna" >&2
+    exit 1
+fi
+
+
+# Test, ci je nastavena premenna WEDI_RC
+if [ -z "$WEDI_RC" ]; then
+    echo "Chyba: Premenna WEDI_RC nie je nastavena" >&2
+    exit 1
+
+elif [ ! -f "$WEDI_RC" ]; then
+    mkdir -p `dirname "$WEDI_RC"` && touch "$WEDI_RC"
+fi
+
+# Funckia vyberie EDITOR na editaciu suboru, otvori ho a zapise informacie do WEDI_RC
+edituj_a_zapis()
+{
+    if [ -z "$EDITOR" ]; then
+	if [ -z "$VISUAL" ]; then
+	    vi "$PRIECINOK"
+	else
+	   $VISUAL "$PRIECINOK"
+	fi
+    else
+	$EDITOR "$PRIECINOK"
+    fi	
+
+    CESTA=`realpath "$PRIECINOK"`
+    POCET_OPAKOVANI=`grep -c "$CESTA" $WEDI_RC`
+    POCET_OPAKOVANI=`expr "$POCET_OPAKOVANI" + 1`
+    echo $DATUM "|" $CESTA "*" $POCET_OPAKOVANI >>  $WEDI_RC
+}
+
+# Spracovanie prepinacov
+prep_m=0;
+prep_l=0;
+prep_a=0;
+prep_b=0;
+
+while getopts :mla:b: o
+do  case "$o" in
+    m) prep_m=1;;
+    l) prep_l=1;;
+    a) prep_a=1; DATUM_ARG=$OPTARG;;
+    b) prep_b=1; DATUM_ARG=$OPTARG;;
+    *) echo "Chyba: Nespravne zadane argumenty" >&2
+       exit 1;;
+    esac
+done
+
+OPTIND=`expr $OPTIND - 1`
+shift $OPTIND
+
+PRIECINOK=$1
+DATUM=`date "+DATE: %Y-%m-%d %H:%M:%S"`
+
+
+if [ "$#" -gt 1 ]; then
+    echo "Chyba: Prilis vela argumentov" >&2
+    exit 1
+fi
+
+RIADOK=0
+while read line
+do
+    RIADOK=`expr $RIADOK + 1`
+    SUBOR=`echo $line | cut -f 2 -d '|' | tail -1 | cut -f 1 -d '*' | cut -d ' ' -f 2`
+    if [ ! -f "$SUBOR" ]; then
+	
+	if [ `uname` = "FreeBSD" ]; then
+	    sed -i '' "${RIADOK}d" $WEDI_RC
+	    RIADOK=`expr $RIADOK - 1`
+	
+	elif [ `uname` = "Linux" ]; then
+	    sed -i "${RIADOK}d" $WEDI_RC
+	    RIADOK=`expr $RIADOK - 1`
+	
+	fi
+    fi
+done < "$WEDI_RC"
+
+# Bez prepinaca s argumentom ======================================
+
+if [ "$#" -eq 1 ] && [ "$prep_m" -eq 0 ] && [ "$prep_l" -eq 0 ] && [ "$prep_a" -eq 0 ] && [ "$prep_b" -eq 0 ]; then
+	
+    if [ -f "$PRIECINOK" ]; then
+	edituj_a_zapis
+
+    elif [ -d "$PRIECINOK" ]; then
+	CESTA=`realpath "$PRIECINOK"`
+	
+	PRIECINOK=`grep "$CESTA.[^/]*$" $WEDI_RC | cut -f 2 -d '|' | tail -1 | cut -f 1 -d '*' | cut -d ' ' -f 2`
+
+	if [ -f "$PRIECINOK" ]; then
+	    edituj_a_zapis
+		
+	else
+	    echo "Chyba: V danom adresari este subor nebol editovany" >&2
+	    exit 1
+	fi
+    
+    else 
+	echo "Chyba: Zadany argument nie je ani subor ani adresar" >&2
+	exit 1
+    fi
+fi
+
+# Bez prepinaca bez argumentu ====================================
+
+if [ "$#" -eq 0 ] && [ "$prep_m" -eq 0 ] && [ "$prep_l" -eq 0 ] && [ "$prep_a" -eq 0 ] && [ "$prep_b" -eq 0 ]; then
+    AKTUALNY_ADRESAR=`realpath "$0"`
+    CESTA_AKT_ADR=`dirname "$AKTUALNY_ADRESAR"`
+	
+    PRIECINOK=`grep "$CESTA_AKT_ADR.[^/]*$" $WEDI_RC | cut -f 2 -d '|' | tail -1 | cut -f 1 -d '*' | cut -d ' ' -f 2`
+
+    if [ -f "$PRIECINOK" ]; then
+	edituj_a_zapis
+	
+    else 
+	echo "Chyba: V danom adresari subor nebol editovany" >&2
+	exit 1
+    fi
+fi
+
+# Zadany prepinac -m ===========================================
+
+if [ "$prep_m" -eq 1 ]; then
+
+    if [ "$#" -eq 0 ]; then
+	AKTUALNY_ADRESAR=`realpath "$0"`
+	CESTA_AKT_ADR=`dirname "$AKTUALNY_ADRESAR"`
+
+	PRIECINOK=`sort  -k7 -n $WEDI_RC | grep "$CESTA_AKT_ADR.[^/]*$" | cut -f 2 -d '|' | tail -1 | cut -f 1 -d '*' | cut -d ' ' -f 2`
+	if [ -f "$PRIECINOK" ]; then
+	    edituj_a_zapis
+		
+	else
+	    echo "Chyba: V danom adresari nebol editovany ziadny subor" >&2
+	    exit 1
+	fi
+
+    elif [ "$#" -eq 1 ]; then
+	
+	    echo $PRIECINOK
+	if [ -d "$PRIECINOK" ]; then
+	    CESTA=`realpath "$PRIECINOK"`
+		
+	    PRIECINOK=`sort  -k7 -n $WEDI_RC | grep "$CESTA.[^/]*$" | cut -f 2 -d '|' | tail -1 | cut -f 1 -d '*' | cut -d ' ' -f 2`
+
+	    if [ -f "$PRIECINOK" ]; then
+		edituj_a_zapis
+		
+	    else
+		echo "Chyba: V danom adresari nebol editovany ziadny subor" >&2
+		exit 1
+	    fi
+	else
+	    echo "Chyba: Zadany argument nie je adresar" >&2
+	    exit 1
+	fi
+
+    else
+	echo "Chyba: Prilis vela argumentov" >&2
+	exit 1
+    fi
+fi
+
+# Zadany prepinac -l ======================================
+
+if [ "$prep_l" -eq 1 ]; then
+	
+    if [ "$#" -eq 0 ]; then
+	AKTUALNY_ADRESAR=`realpath "$0"`
+	CESTA_AKT_ADR=`dirname "$AKTUALNY_ADRESAR"`
+		
+	PRIECINOK=`grep "$CESTA_AKT_ADR.[^/]*$" $WEDI_RC | cut -f 2 -d '|' | cut -f 1 -d '*' | cut -d ' ' -f 2 | grep -oE '[^/]+$' | sort -u`
+
+	if [ -z "$PRIECINOK" ]; then
+	    echo "Chyba: V danom adresari nebol editovany ziadny subor" >&2
+	    exit 1
+				
+	else
+	    grep "$CESTA_AKT_ADR.[^/]*$" $WEDI_RC | cut -f 2 -d '|' | cut -f 1 -d '*' | cut -d ' ' -f 2 | grep -oE '[^/]+$' | sort -u
+	fi
+	
+    elif [ "$#" -eq 1 ]; then
+	
+	if [ -d "$PRIECINOK" ]; then
+	    CESTA=`realpath "$PRIECINOK"`
+		
+	    PRIECINOK=`grep "$CESTA.[^/]*$" $WEDI_RC | cut -f 2 -d '|' | cut -f 1 -d '*' | cut -d ' ' -f 2 | grep -oE '[^/]+$' | sort -u`
+				
+	    if [ -z "$PRIECINOK" ]; then
+		echo "Chyba: V danom adresari nebol editovany ziadny subor" >&2
+		exit 1
+				
+	    else
+		grep "$CESTA.[^/]*$" $WEDI_RC | cut -f 2 -d '|' | cut -f 1 -d '*' | cut -d ' ' -f 2 | grep -oE '[^/]+$' | sort -u
+	    fi
+		
+	else
+	    echo "Chyba: Zadany argument nie je adresar" >&2
+	    exit 1
+	fi
+	
+    else
+	echo "Chyba: Prilis vela argumentov" >&2
+	exit 1
+    fi
+fi
+
+# Zadany prepinac -a DATUM_ARG ===========================
+
+if [ "$prep_a" -eq 1 ]; then 
+
+    case "$DATUM_ARG" in
+	[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;	
+	*) echo "Chyba: Nespravne zadany datum" >&2
+	   exit 1;;
+    esac
+	
+    if [ "$#" -eq 0 ]; then
+	ZADANY_DATUM=`echo "$DATUM_ARG" | sed "s/-//g"`	
+		
+	AKTUALNY_ADRESAR=`realpath "$0"`
+	CESTA_AKT_ADR=`dirname "$AKTUALNY_ADRESAR"`
+		
+	ZOZNAM=`grep "$CESTA_AKT_ADR.[^/]*$" $WEDI_RC | sort -k5 | awk '{print $2,$5}' | sed 's/ //g'`
+	
+	for polozka in $ZOZNAM ; do
+	    WEDI_DATUM=`echo $polozka | cut -f 1 -d '/' | sed "s/-//g"`   
+	    
+	    if [ $WEDI_DATUM -ge $ZADANY_DATUM ]; then
+		meno=`echo $polozka| grep -oE '[^/]+$'`
+		
+		if [ "$meno" != "$stare_meno" ]; then
+		    echo "$meno"
+		    stare_meno="$meno"
+		fi
+	    fi
+	done
+
+    elif [ "$#" -eq 1 ]; then
+
+	if [ -d "$PRIECINOK" ]; then 
+	    ZADANY_DATUM=`echo "$DATUM_ARG" | sed "s/-//g"`	
+			
+	    CESTA=`realpath "$PRIECINOK"`
+			
+	    ZOZNAM=`grep "$CESTA.[^/]*$" $WEDI_RC | sort -k5 | awk '{print $2,$5}' | sed 's/ //g'`
+	    
+	    for polozka in $ZOZNAM ; do
+		WEDI_DATUM=`echo $polozka | cut -f 1 -d '/' | sed "s/-//g"`		
+		
+		if [ $WEDI_DATUM -ge $ZADANY_DATUM ]; then
+		    meno=`echo $polozka| grep -oE '[^/]+$'`
+		    
+		    if [ "$meno" != "$stare_meno" ]; then
+			echo "$meno"
+			stare_meno="$meno"
+		    fi
+		fi
+	    done
+	
+	else 
+	    echo "Chyba: Zadany argument nie je adresar" >&2
+	    exit 1
+	fi
+	
+    else 
+	echo "Chyba: Prilis vela argumentov" >&2
+	exit 1
+    fi
+fi
+
+
+# Zadany prepinac -b DATUM_ARG ==========================
+if [ "$prep_b" -eq 1 ]; then 
+
+    case "$DATUM_ARG" in
+	[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;	
+	*) echo "Chyba: NEspravne zadany datum" >&2
+	   exit 1;;
+    esac
+	
+    if [ "$#" -eq 0 ]; then
+	ZADANY_DATUM=`echo "$DATUM_ARG" | sed "s/-//g"`
+		
+	AKTUALNY_ADRESAR=`realpath "$0"`
+	CESTA_AKT_ADR=`dirname "$AKTUALNY_ADRESAR"`
+		
+	ZOZNAM=`grep "$CESTA_AKT_ADR.[^/]*$" $WEDI_RC | sort -k5 | awk '{print $2,$5}' | sed 's/ //g'`
+		
+	for polozka in $ZOZNAM ; do
+	    WEDI_DATUM=`echo $polozka | cut -f 1 -d '/' | sed "s/-//g"`		
+	    
+	    if [ $WEDI_DATUM -lt $ZADANY_DATUM ]; then
+		meno=`echo $polozka| grep -oE '[^/]+$'`		
+		
+		if [ "$meno" != "$stare_meno" ]; then
+		    echo "$meno"
+		    stare_meno="$meno"
+		fi
+	    fi
+	done
+
+    elif [ "$#" -eq 1 ]; then
+		
+	if [ -d "$PRIECINOK" ]; then
+	    ZADANY_DATUM=`echo "$DATUM_ARG" | sed "s/-//g"`	
+			
+	    CESTA=`realpath "$PRIECINOK"`
+			
+	    ZOZNAM=`grep "$CESTA.[^/]*$" $WEDI_RC | sort -k5 | awk '{print $2,$5}' | sed 's/ //g'`
+			
+	    for polozka in $ZOZNAM ; do
+		WEDI_DATUM=`echo $polozka | cut -f 1 -d '/' | sed "s/-//g"`
+		
+		if [ $WEDI_DATUM -lt $ZADANY_DATUM ]; then
+		    meno=`echo $polozka| grep -oE '[^/]+$'`
+					
+		    if [ "$meno" != "$stare_meno" ]; then
+			echo "$meno"
+			stare_meno="$meno"
+		    fi
+		fi
+	    done
+	
+	else 
+	    echo "Chyba: Zadany argument nie je adresar" >&2
+	    exit 1
+	fi
+
+    else 
+	echo "Chyba: Prilis vela argumentov" >&2
+	exit 1
+    fi
+fi
